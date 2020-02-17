@@ -8,6 +8,19 @@ import time
 import csv
 import os
 import json
+import pymysql
+
+from config.keys import DB_PASSWORD, DB_USER_NAME, HOST
+
+def connect_db(db_name: str = "crawler") -> pymysql.connect:
+    """
+    dbのconnectionインスタンスを生成
+    """
+    return pymysql.connect(host=HOST,
+                           user=DB_USER_NAME,
+                           passwd=DB_PASSWORD,
+                           charset="utf8",
+                           db=db_name)
 
 def get_urls():
     options = Options()
@@ -51,6 +64,18 @@ def scrape():
     output_dir = "/home/zaisan/sum/scraping_news/nikkei"
     options = Options()
     options.set_headless()
+
+    # Ready Database
+    table_name = "company_name"
+    command = "SELECT * FROM {table_name}".format(table_name=table_name)
+    connection = connect_db()
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(command)
+            rows = cursor.fetchall()
+    finally:
+        connection.close()
+
     #Chromeを操作
     driver = webdriver.Chrome(options=options)
     with open("result.csv", "r") as urls:
@@ -60,17 +85,32 @@ def scrape():
             driver.get("https://www.nikkei.com" + url)
             html = driver.page_source
             soup = BeautifulSoup(html, 'html.parser')
+
+            # Get Each Texts
+            date = soup.find("dd",attrs={"class":"cmnc-publish"}).string
             title = soup.find("span",attrs={"class":"cmnc-middle JSID_key_fonthln m-streamer_medium"}).string
             body = soup.find("div",attrs={"class":"cmn-article_text a-cf JSID_key_fonttxt m-streamer_medium"})
+
+            # Merge Body
             body_list = []
             for b in body.findAll('p'):
                 body_list.append(b.text)
             body = "".join(body_list)
+
+            # Retrieve Company Code
+            for row in rows:
+                if row[2] in body or row[3] in body:
+                    print(row)
+                    dic["code"] = row[1]
+                    break
+
+            # Append Data
+            dic["date"] = date
             dic["article"] = body.split("。")
             dic["abstract"] = title.split("。")
             json_file = open(output_dir+"{}.json".format(url[8:-1]), "w")
             json.dump(dic, json_file, indent=4, ensure_ascii=False)
             
 if __name__ == "__main__":
-    get_urls()
+    # get_urls()
     scrape()

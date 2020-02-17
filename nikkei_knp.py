@@ -2,11 +2,27 @@ import neologdn
 import re
 import argparse
 import os
+import json
 from tqdm import tqdm
 import time
-from config import MY_POS_ID_LIST, MY_POS_ID_SET, PMIndex, RegexPattern
 from pyknp import KNP
 from contextlib import redirect_stdout
+
+class RegexPattern:
+
+    class Pattern:
+        def __init__(self, ptn, *args):
+            self.ptn = re.compile(ptn)
+            self.g = args
+
+        def group(self, i):
+            return self.g[i]
+
+    TITLE_0 = Pattern("[\(|（]?\d[\)|）|\.]\s?(?P<text>.+)", "text")
+    TITLE_1 = Pattern("[①|②|③|④|⑤|⑥|⑦|⑧|⑨|⑩|○|■]")
+    TITLE_2 = Pattern("[\s|\n][a-z][\.|．]")
+    NUMBER = Pattern("\d+([,，]\d{3})*[千百十]?[兆億万]?")
+    TICKER_CODE = Pattern(r"^\d{4}\.csv$")
 
 knp = KNP()
 
@@ -46,19 +62,41 @@ def to_lowercase(input):
 
 def normalize_file(in_fname, out_fname):
     with open(in_fname, 'r') as rf, open(out_fname, 'w') as wf:
-        for paragraph in rf:
-            for line in paragraph.split("。"):
-                n = call_neologdn(line)
-                n = remove_brackets(n)
-                n = to_lowercase(n)
-                # 数字をNUMに
-                n = RegexPattern.NUMBER.ptn.sub("NUM", n)
-                #morph by KNP
-                try:
-                    n = " ".join(morphological_analysis(n))
-                    wf.write(n)
-                except Exception as e:
-                    print(e)
+        df = json.load(rf)
+        new_article = []
+        new_abstract = []
+        for line in df["article"]:
+            n = call_neologdn(line)
+            n = remove_brackets(n)
+            n = to_lowercase(n)
+            # 数字をNUMに
+            n = RegexPattern.NUMBER.ptn.sub("NUM", n)
+            #morph by KNP
+            try:
+                n = " ".join(morphological_analysis(n))
+                if n == " " or n == "" or n == "\n":
+                    continue
+            except Exception as e:
+                print(e)
+            new_article.append(n)
+        for line in df["abstract"]:
+            n = call_neologdn(line)
+            n = remove_brackets(n)
+            n = to_lowercase(n)
+            # 数字をNUMに
+            n = RegexPattern.NUMBER.ptn.sub("NUM", n)
+            #morph by KNP
+            try:
+                n = " ".join(morphological_analysis(n))
+                if n == " " or n == "" or n == "\n":
+                    continue
+            except Exception as e:
+                print(e)
+            new_abstract.append(n)
+        df["article"] = new_article
+        df["abstract"] = new_abstract
+        json.dump(df, wf, indent=4, ensure_ascii=False)
+            
 
 def main():
     parser = argparse.ArgumentParser()
@@ -71,7 +109,7 @@ def main():
     if not os.path.exists(output_directory): os.makedirs(output_directory)
     sorted_input = sorted(os.listdir(input_directory))
     start = time.time()
-    for f in sorted_input[:1000]:
+    for f in sorted_input:
         input_path = os.path.join(input_directory, f)
         output_path = os.path.join(output_directory, f)
         normalize_file(input_path, output_path)
