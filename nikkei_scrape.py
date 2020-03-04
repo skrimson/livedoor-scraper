@@ -9,6 +9,7 @@ import csv
 import os
 import json
 import pymysql
+import datetime
 
 from config.keys import DB_PASSWORD, DB_USER_NAME, HOST
 
@@ -88,6 +89,8 @@ def scrape():
 
             # Get Each Texts
             date = soup.find("dd",attrs={"class":"cmnc-publish"}).string
+            date = re.match(r'([0-9]+)/([0-9]+)/([0-9]+) ([0-9]+):([0-9]+)', date).group()
+            print(date)
             title = soup.find("span",attrs={"class":"cmnc-middle JSID_key_fonthln m-streamer_medium"}).string
             body = soup.find("div",attrs={"class":"cmn-article_text a-cf JSID_key_fonttxt m-streamer_medium"})
 
@@ -103,14 +106,21 @@ def scrape():
                     print(row)
                     dic["code"] = row[1]
                     break
+            if "code" not in dic.keys():
+                print(body)
+                continue
+            
+            # Datetime
+            date_format = datetime.datetime.strptime(date, "%Y/%m/%d %H:%M")
+            date_ = date_format.strftime("%Y-%m-%d")
 
             # Append Data
             dic["date"] = date
             dic["article"] = body.split("。")
             dic["abstract"] = title.split("。")
-            json_file = open(output_dir+"{}.json".format(url[8:-1]), "w")
+            json_file = open(output_dir+"/{}.json".format(dic["code"]+"_"+date_), "w")
             json.dump(dic, json_file, indent=4, ensure_ascii=False)
             
 if __name__ == "__main__":
-    # get_urls()
+    get_urls()
     scrape()
